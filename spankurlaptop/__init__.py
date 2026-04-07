@@ -50,7 +50,7 @@ def _get_audio_zip_path():
 PID_FILE = os.path.join(os.path.expanduser("~"), ".spankurlaptop.pid")
 PROFILE_FILE = os.path.join(os.path.expanduser("~"), ".spankurlaptop_profile.npz")
 SAMPLE_RATE = 44100
-BLOCK_SIZE = 512  # Very small block size for near zero latency
+BLOCK_SIZE = 256  # Reduced from 512 for even lower latency (~5.8ms)
 
 
 def daemonize():
@@ -189,8 +189,13 @@ class SpankDetector:
 
     def load_sounds(self):
         """Loads sounds directly from memory using zipfile for 0 latency playback."""
-        mixer.pre_init(SAMPLE_RATE, -16, 2, BLOCK_SIZE)
-        mixer.init()
+        # Optimized mixer initialization with a very small buffer for instant response
+        try:
+            mixer.init(frequency=SAMPLE_RATE, size=-16, channels=2, buffer=256)
+        except Exception:
+            # Fallback if 256 is too low for the hardware
+            mixer.pre_init(SAMPLE_RATE, -16, 2, 512)
+            mixer.init()
 
         audio_zip = _get_audio_zip_path()
 
@@ -288,6 +293,7 @@ class SpankDetector:
         bucket_size = max(1, total_sounds // 5)
         bucket_index = int(intensity * 4.99)  # 0 to 4
 
+        # Calculate indices
         start_idx = bucket_index * bucket_size
         end_idx = min(total_sounds, start_idx + bucket_size)
 
@@ -296,12 +302,16 @@ class SpankDetector:
         else:
             sound_idx = random.randint(start_idx, end_idx - 1)
 
-        # Log playback for debugging
-        log_path = os.path.join(os.path.expanduser("~"), "spankurlaptop_debug.log")
-        with open(log_path, "a") as f:
-            f.write(f"[{time.strftime('%H:%M:%S')}] Playing sound {sound_idx} (Intensity: {intensity:.2f})\n")
-
+        # TRIGGER PLAYBACK IMMEDIATELY - Shaves off a few milliseconds of delay
         self.sounds[sound_idx].play()
+
+        # Log playback for debugging (done after playback starts)
+        log_path = os.path.join(os.path.expanduser("~"), "spankurlaptop_debug.log")
+        try:
+            with open(log_path, "a") as f:
+                f.write(f"[{time.strftime('%H:%M:%S')}] Playing sound {sound_idx} (Intensity: {intensity:.2f})\n")
+        except Exception:
+            pass
 
     def start_listening(self):
         print("Listening for spanks in the background...")

@@ -17,9 +17,10 @@ except ImportError:
     print("Dependencies missing! Please run: pip install -r requirements.txt")
     sys.exit(1)
 
-PID_FILE = ".spankurlaptop.pid"
-AUDIO_ZIP = "audio.zip"
-PROFILE_FILE = "spank_profile.npz"
+PID_FILE = os.path.join(os.path.expanduser("~"), ".spankurlaptop.pid")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+AUDIO_ZIP = os.path.join(BASE_DIR, "audio.zip")
+PROFILE_FILE = os.path.join(os.path.expanduser("~"), ".spankurlaptop_profile.npz")
 SAMPLE_RATE = 44100
 BLOCK_SIZE = 512  # Very small block size for near zero latency
 
@@ -295,7 +296,7 @@ def run_detector():
         with open("error.log", "w") as f:
             f.write(str(e))
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="SpankUrLaptop CLI Tool")
     parser.add_argument("command", choices=["start", "stop", "status", "run", "calibrate"], help="Command to execute")
     args = parser.parse_args()
@@ -311,3 +312,6 @@ if __name__ == "__main__":
         detector.run_calibration()
     elif args.command == "run":
         run_detector()
+
+if __name__ == "__main__":
+    main()

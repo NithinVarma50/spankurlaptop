@@ -28,106 +28,49 @@ When you slap your laptop chassis, it:
 
 ## 📦 Installation Guide
 
-Follow these steps **exactly** to get the tool running on your laptop.
+Follow these steps **exactly** to install `spankurlaptop` globally over your terminal.
 
 ---
 
-### Step 1 — Install Python 3.8+
+### Method A — Install directly from GitHub (Fastest)
 
-Make sure Python is installed on your system.
-
-**Check if Python is already installed:**
+Just like `npm install -g`, you can install this globally using Python's package manager:
 
 ```bash
-python --version
+pip install git+https://github.com/NithinVarma50/spankurlaptop.git
 ```
 
-If you see `Python 3.8.x` or higher, skip to Step 2.
+### Method B — Install locally from source
 
-If not, download Python from: **https://www.python.org/downloads/**
-
-> ⚠️ **Windows users:** During installation, tick **"Add Python to PATH"** before clicking Install.
-
----
-
-### Step 2 — Clone the Repository
+Alternatively, clone the repository and install it directly:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/spankurlaptop.git
+git clone https://github.com/NithinVarma50/spankurlaptop.git
 cd spankurlaptop
+pip install .
 ```
 
-Or download and unzip the ZIP file from GitHub, then open a terminal inside that folder.
+> ⚠️ **Make sure you have Python 3.8+ installed** and `pip` available in your terminal. For Windows, check **"Add Python to PATH"** during installation.
 
 ---
 
-### Step 3 — (Recommended) Create a Virtual Environment
+### Step 2 — Ensure `audio.zip` is available
 
-This keeps dependencies isolated and clean.
-
-```bash
-# Create the virtual environment
-python -m venv venv
-
-# Activate it:
-
-# On Windows:
-venv\Scripts\activate
-
-# On macOS / Linux:
-source venv/bin/activate
-```
-
-You'll see `(venv)` appear at the start of your terminal line when it's active.
+**Currently, you still need the audio files.** Download `audio.zip` from this repository and place it in the same folder where `spankurlaptop` was installed, or run the command directly from the cloned repository.
 
 ---
 
-### Step 4 — Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-This installs:
-- `numpy` — audio math & FFT
-- `sounddevice` — real-time microphone input
-- `pygame` — zero-latency audio playback
-- `psutil` — background process management
-
-> 💡 **Linux users:** If `sounddevice` fails, you may need PortAudio:
-> ```bash
-> sudo apt install libportaudio2
-> ```
-
----
-
-### Step 5 — Make Sure `audio.zip` Is Present
-
-The tool needs `audio.zip` in the same folder as `spankurlaptop.py`. This file contains the 59 audio reaction files.
-
-```
-spankurlaptop/
-├── spankurlaptop.py   ✅
-├── requirements.txt   ✅
-├── audio.zip          ✅  ← must be here
-└── README.md
-```
-
-If it's missing, download it from the GitHub releases page.
-
----
-
-### Step 6 — Calibrate Your Laptop (Do This Once!)
+### Step 3 — Calibrate Your Laptop (Do This Once!)
 
 This step teaches the tool the **unique thud sound of your specific laptop chassis** so it ignores all other sounds (typing, voice, music).
 
 ```bash
-python spankurlaptop.py calibrate
+spankurlaptop calibrate
 ```
 
 You will be asked to **spank your laptop 100 times** 🔥, pausing about a second between each slap. The tool records the frequency fingerprint and volume of each slap to build a precision profile.
 
-When done, it saves `spank_profile.npz` — your personal calibration file.
+When done, it saves a `.spankurlaptop_profile.npz` in your user home directory.
 
 > 💡 Slap the area around the **trackpad or palm rest** for the most consistent results.
 
@@ -135,10 +78,12 @@ When done, it saves `spank_profile.npz` — your personal calibration file.
 
 ## 🚀 Usage
 
+Since it's installed globally, you can type these commands from **anywhere** in your terminal!
+
 ### ▶️ Start (runs silently in the background)
 
 ```bash
-python spankurlaptop.py start
+spankurlaptop start
 ```
 
 The tool will launch in the background with **no terminal window**. You can now close the terminal — it keeps running.
@@ -150,7 +95,7 @@ The tool will launch in the background with **no terminal window**. You can now 
 To stop the background process:
 
 ```bash
-python spankurlaptop.py stop
+spankurlaptop stop
 ```
 
 This sends a termination signal to the background process and removes the PID file cleanly.
@@ -162,7 +107,7 @@ This sends a termination signal to the background process and removes the PID fi
 ### 📊 Check Status
 
 ```bash
-python spankurlaptop.py status
+spankurlaptop status
 ```
 
 Output example:
@@ -181,7 +126,7 @@ spankurlaptop is NOT running.
 If you move to a different laptop or the detection feels off:
 
 ```bash
-python spankurlaptop.py calibrate
+spankurlaptop calibrate
 ```
 
 ---
@@ -191,7 +136,7 @@ python spankurlaptop.py calibrate
 To run the detector directly in your terminal (visible output, Ctrl+C to quit):
 
 ```bash
-python spankurlaptop.py run
+spankurlaptop run
 ```
 
 ---

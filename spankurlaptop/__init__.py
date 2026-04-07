@@ -101,6 +101,27 @@ def status():
     print("spankurlaptop is NOT running.")
 
 
+def uninstall():
+    """Uninstall the tool and clean up files."""
+    print("Uninstalling spankurlaptop...")
+    
+    # Stop if running
+    if os.path.exists(PID_FILE):
+        stop()
+    
+    # Remove profile file
+    if os.path.exists(PROFILE_FILE):
+        os.remove(PROFILE_FILE)
+        print(f"Removed {PROFILE_FILE}")
+    
+    # Remove PID file if still exists
+    if os.path.exists(PID_FILE):
+        os.remove(PID_FILE)
+    
+    print("Cleanup complete.")
+    print("To fully uninstall, run: pip uninstall spankurlaptop")
+
+
 # --- AUDIO & DETECTION LOGIC ---
 
 class SpankDetector:
@@ -298,7 +319,7 @@ def run_detector():
 
 def main():
     parser = argparse.ArgumentParser(description="SpankUrLaptop CLI Tool")
-    parser.add_argument("command", choices=["start", "stop", "status", "run", "calibrate"], help="Command to execute")
+    parser.add_argument("command", choices=["start", "stop", "status", "run", "calibrate", "uninstall"], help="Command to execute")
     args = parser.parse_args()
 
     if args.command == "start":
@@ -312,6 +333,8 @@ def main():
         detector.run_calibration()
     elif args.command == "run":
         run_detector()
+    elif args.command == "uninstall":
+        uninstall()
 
 if __name__ == "__main__":
     main()

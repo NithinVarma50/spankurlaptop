@@ -1,11 +1,14 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='spankurlaptop',
     version='1.0.0',
     description='A terminal background tool that gives your laptop senses.',
     author='NithinVarma50',
-    py_modules=['spankurlaptop'],
+    packages=find_packages(),
+    package_data={
+        'spankurlaptop': ['audio.zip'],
+    },
     install_requires=[
         'sounddevice',
         'numpy',

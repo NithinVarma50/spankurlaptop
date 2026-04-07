@@ -141,6 +141,19 @@ spankurlaptop run
 
 ---
 
+### 🗑️ Uninstall
+
+To completely remove spankurlaptop from your system:
+
+```bash
+spankurlaptop uninstall
+pip uninstall spankurlaptop
+```
+
+This stops any running process, removes configuration files, and provides instructions for full uninstallation.
+
+---
+
 ## 🎵 Audio Reactions
 
 59 reactions in `audio.zip`, pre-loaded into RAM at startup for zero-latency playback, mapped across 5 intensity buckets:

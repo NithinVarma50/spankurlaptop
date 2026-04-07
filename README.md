@@ -6,7 +6,7 @@
 Slap it. It screams back. Harder slap = louder scream.
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python)
-![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey?style=for-the-badge)
+![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 </div>
@@ -17,65 +17,168 @@ Slap it. It screams back. Harder slap = louder scream.
 
 SpankUrLaptop runs silently in the background and listens through your laptop's microphone.
 
-When you slap your laptop, it:
+When you slap your laptop chassis, it:
 
 1. **Detects the impact instantly** — using a real-time audio spike detector with an `11ms` audio block size, faster than human reaction time.
 2. **Analyzes the wave** — computes an FFT (Fast Fourier Transform) frequency fingerprint and matches it against your calibrated slap profile.
-3. **Filters out false positives** — voice, typing, and phone notifications are rejected using a Crest Factor + Cosine Similarity test.
+3. **Filters out false positives** — voice, keyboard typing, and phone notifications are rejected using a Crest Factor + Cosine Similarity test.
 4. **Screams back in proportion** — maps the slap intensity (0–100%) to one of 59 progressively louder audio reactions, chosen randomly from the correct intensity bucket.
 
 ---
 
-## 📦 Installation
+## 📦 Installation Guide
 
-### 1. Clone the repo
+Follow these steps **exactly** to get the tool running on your laptop.
+
+---
+
+### Step 1 — Install Python 3.8+
+
+Make sure Python is installed on your system.
+
+**Check if Python is already installed:**
+
+```bash
+python --version
+```
+
+If you see `Python 3.8.x` or higher, skip to Step 2.
+
+If not, download Python from: **https://www.python.org/downloads/**
+
+> ⚠️ **Windows users:** During installation, tick **"Add Python to PATH"** before clicking Install.
+
+---
+
+### Step 2 — Clone the Repository
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/spankurlaptop.git
 cd spankurlaptop
 ```
 
-### 2. Install dependencies
+Or download and unzip the ZIP file from GitHub, then open a terminal inside that folder.
+
+---
+
+### Step 3 — (Recommended) Create a Virtual Environment
+
+This keeps dependencies isolated and clean.
+
+```bash
+# Create the virtual environment
+python -m venv venv
+
+# Activate it:
+
+# On Windows:
+venv\Scripts\activate
+
+# On macOS / Linux:
+source venv/bin/activate
+```
+
+You'll see `(venv)` appear at the start of your terminal line when it's active.
+
+---
+
+### Step 4 — Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-> **Requirements**: `numpy`, `sounddevice`, `pygame`, `psutil`
+This installs:
+- `numpy` — audio math & FFT
+- `sounddevice` — real-time microphone input
+- `pygame` — zero-latency audio playback
+- `psutil` — background process management
 
-### 3. Calibrate your laptop (do this once!)
+> 💡 **Linux users:** If `sounddevice` fails, you may need PortAudio:
+> ```bash
+> sudo apt install libportaudio2
+> ```
 
-This step teaches the tool your laptop's specific slap sound wave — so it ignores all other sounds.
+---
+
+### Step 5 — Make Sure `audio.zip` Is Present
+
+The tool needs `audio.zip` in the same folder as `spankurlaptop.py`. This file contains the 59 audio reaction files.
+
+```
+spankurlaptop/
+├── spankurlaptop.py   ✅
+├── requirements.txt   ✅
+├── audio.zip          ✅  ← must be here
+└── README.md
+```
+
+If it's missing, download it from the GitHub releases page.
+
+---
+
+### Step 6 — Calibrate Your Laptop (Do This Once!)
+
+This step teaches the tool the **unique thud sound of your specific laptop chassis** so it ignores all other sounds (typing, voice, music).
 
 ```bash
 python spankurlaptop.py calibrate
 ```
 
-You will be asked to **spank your laptop 100 times** 🔥, pausing slightly between each. The tool will record the frequency fingerprint and volume of each slap to build a precision profile.
+You will be asked to **spank your laptop 100 times** 🔥, pausing about a second between each slap. The tool records the frequency fingerprint and volume of each slap to build a precision profile.
+
+When done, it saves `spank_profile.npz` — your personal calibration file.
+
+> 💡 Slap the area around the **trackpad or palm rest** for the most consistent results.
 
 ---
 
 ## 🚀 Usage
 
-### Start (runs in the background, no terminal window)
+### ▶️ Start (runs silently in the background)
 
 ```bash
 python spankurlaptop.py start
 ```
 
-### Stop
+The tool will launch in the background with **no terminal window**. You can now close the terminal — it keeps running.
+
+---
+
+### ⏹️ Stop
+
+To stop the background process:
 
 ```bash
 python spankurlaptop.py stop
 ```
 
-### Check if it's running
+This sends a termination signal to the background process and removes the PID file cleanly.
+
+> ⚠️ If `stop` says "Not running" but you think it's still active, run `status` to check, or restart your terminal session.
+
+---
+
+### 📊 Check Status
 
 ```bash
 python spankurlaptop.py status
 ```
 
-### Re-calibrate anytime
+Output example:
+```
+spankurlaptop is RUNNING (PID: 18472)
+```
+or
+```
+spankurlaptop is NOT running.
+```
+
+---
+
+### 🔁 Re-Calibrate Anytime
+
+If you move to a different laptop or the detection feels off:
 
 ```bash
 python spankurlaptop.py calibrate
@@ -83,9 +186,19 @@ python spankurlaptop.py calibrate
 
 ---
 
-## 🎵 Audio Variants
+### 🧪 Run in Foreground (for debugging)
 
-The tool ships with **59 audio reactions** stored in `audio.zip`, all pre-loaded into RAM at startup for zero-latency playback. Reactions are mapped across 5 intensity buckets:
+To run the detector directly in your terminal (visible output, Ctrl+C to quit):
+
+```bash
+python spankurlaptop.py run
+```
+
+---
+
+## 🎵 Audio Reactions
+
+59 reactions in `audio.zip`, pre-loaded into RAM at startup for zero-latency playback, mapped across 5 intensity buckets:
 
 | Bucket | Slap Intensity | Sound Range |
 |--------|---------------|-------------|
@@ -112,7 +225,7 @@ The tool ships with **59 audio reactions** stored in `audio.zip`, all pre-loaded
 
 ```
 spankurlaptop/
-├── spankurlaptop.py       # Main CLI tool
+├── spankurlaptop.py        # Main CLI tool
 ├── requirements.txt        # Python dependencies
 ├── audio.zip               # 59 audio reaction files (01.mp3 – 59.mp3)
 ├── spank_profile.npz       # Your saved calibration profile (auto-generated)
@@ -124,8 +237,37 @@ spankurlaptop/
 ## 🛠 Requirements
 
 - Python 3.8+
-- A working microphone
+- A working microphone (built-in laptop mic works perfectly)
 - A laptop you're willing to slap
+
+---
+
+## ❓ Troubleshooting
+
+**`Dependencies missing!` error on launch**
+→ Run `pip install -r requirements.txt` again, and make sure your venv is activated.
+
+**`audio.zip not found` warning**
+→ Place `audio.zip` in the same directory as `spankurlaptop.py`.
+
+**Tool doesn't react to slaps**
+→ Run `calibrate` again and slap more firmly during calibration.
+
+**`stop` says "Not running" but it is**
+→ Manually find and kill the process:
+```bash
+# Windows
+taskkill /F /IM python.exe
+
+# macOS / Linux
+pkill -f spankurlaptop.py
+```
+
+**`sounddevice` install fails on Linux**
+```bash
+sudo apt install libportaudio2 portaudio19-dev
+pip install sounddevice
+```
 
 ---
 

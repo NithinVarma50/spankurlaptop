@@ -1,0 +1,2 @@
+include spankurlaptop/audio.zip
+recursive-include spankurlaptop *.py

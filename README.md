@@ -54,9 +54,9 @@ pip install .
 
 ---
 
-### Step 2 — Ensure `audio.zip` is available
+### Step 2 — Audio Files (Bundled Automatically ✅)
 
-**Currently, you still need the audio files.** Download `audio.zip` from this repository and place it in the same folder where `spankurlaptop` was installed, or run the command directly from the cloned repository.
+`audio.zip` is **bundled inside the package** and loads automatically after install — no manual file copying needed.
 
 ---
 
@@ -65,14 +65,21 @@ pip install .
 This step teaches the tool the **unique thud sound of your specific laptop chassis** so it ignores all other sounds (typing, voice, music).
 
 ```bash
+# Default: calibrate with 100 spanks
 spankurlaptop calibrate
+
+# Quick calibration: choose any number (e.g. 20 or 30)
+spankurlaptop calibrate --count 20
+spankurlaptop calibrate --count 30
 ```
 
-You will be asked to **spank your laptop 100 times** 🔥, pausing about a second between each slap. The tool records the frequency fingerprint and volume of each slap to build a precision profile.
+Spank your laptop the chosen number of times, pausing about a second between each slap. The tool records the frequency fingerprint and volume of each slap to build a precision profile.
 
 When done, it saves a `.spankurlaptop_profile.npz` in your user home directory.
 
 > 💡 Slap the area around the **trackpad or palm rest** for the most consistent results.
+> 
+> 💡 More spanks = more accurate profile. 20–30 is fine for a quick start; 100 gives best precision.
 
 ---
 
@@ -126,7 +133,11 @@ spankurlaptop is NOT running.
 If you move to a different laptop or the detection feels off:
 
 ```bash
+# Full calibration (100 spanks)
 spankurlaptop calibrate
+
+# Quick re-calibration (20 spanks)
+spankurlaptop calibrate --count 20
 ```
 
 ---
@@ -174,8 +185,8 @@ This stops any running process, removes configuration files, and provides instru
 |-------|--------|---------|
 | Volume Spike | RMS > 5× baseline | Ignores ambient noise |
 | Crest Factor | Peak/RMS > 3.0 | Filters sustained sounds (voice, music) |
-| Frequency Match | Cosine Similarity ≥ 92% | Matches your unique chassis thud pattern |
-| Volume Gate | RMS ≥ 60% of calibrated average | Filters keyboard clicks |
+| Frequency Match | Cosine Similarity ≥ 82% | Matches your unique chassis thud pattern |
+| Volume Gate | RMS ≥ 40% of calibrated average | Filters keyboard clicks |
 
 ---
 
@@ -183,11 +194,13 @@ This stops any running process, removes configuration files, and provides instru
 
 ```
 spankurlaptop/
-├── spankurlaptop.py        # Main CLI tool
+├── spankurlaptop/          # Package source
+│   ├── __init__.py         # Main logic & listener
+│   ├── __main__.py         # Entry point for background process
+│   └── audio.zip           # 60+ audio reaction files
+├── setup.py                # Installation script
 ├── requirements.txt        # Python dependencies
-├── audio.zip               # 59 audio reaction files (01.mp3 – 59.mp3)
-├── spank_profile.npz       # Your saved calibration profile (auto-generated)
-└── .gitignore
+└── README.md
 ```
 
 ---
@@ -206,7 +219,10 @@ spankurlaptop/
 → Run `pip install -r requirements.txt` again, and make sure your venv is activated.
 
 **`audio.zip not found` warning**
-→ Place `audio.zip` in the same directory as `spankurlaptop.py`.
+→ The audio files are bundled inside the package. Try reinstalling:
+```bash
+pip install --force-reinstall git+https://github.com/NithinVarma50/spankurlaptop.git
+```
 
 **Tool doesn't react to slaps**
 → Run `calibrate` again and slap more firmly during calibration.
@@ -218,7 +234,7 @@ spankurlaptop/
 taskkill /F /IM python.exe
 
 # macOS / Linux
-pkill -f spankurlaptop.py
+pkill -f "python -m spankurlaptop"
 ```
 
 **`sounddevice` install fails on Linux**

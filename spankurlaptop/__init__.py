@@ -10,9 +10,9 @@ import time
 import psutil
 
 try:
-    import numpy as np
-    import sounddevice as sd
-    from pygame import mixer
+    import numpy as np  # type: ignore
+    import sounddevice as sd  # type: ignore
+    from pygame import mixer  # type: ignore
 except ImportError:
     print("Dependencies missing! Please run: pip install -r requirements.txt")
     sys.exit(1)
@@ -38,7 +38,7 @@ def _get_audio_zip_path():
         pass
 
     try:
-        import pkg_resources
+        import pkg_resources  # type: ignore
         return pkg_resources.resource_filename("spankurlaptop", "audio.zip")
     except Exception:
         pass
@@ -274,14 +274,14 @@ class SpankDetector:
                                 # A typical hit ratio is 1.0. A hard hit is > 1.5. A light hit is 0.4.
                                 ratio = rms / (self.calibrated_rms + 1e-10)
                                 
-                                # Map ratio to volume (e.g. ratio 0.5 -> ~0.3 vol, ratio 2.0 -> 1.0 vol)
-                                volume = min(1.0, max(0.1, ratio / 2.0))
+                                # Increased volume mapping: average hit (1.0) = ~80% volume, hard hit (1.25+) = 100% volume
+                                volume = min(1.0, max(0.2, ratio / 1.25))
                                 
                                 self.play_reaction(volume)
                                 self.cooldown = self.cool_down_frames
                         else:
-                            # Fallback uncalibrated logic
-                            intensity = min(1.0, max(0.1, (rms - 0.01) / 0.15))
+                            # Fallback uncalibrated logic (also increased volume)
+                            intensity = min(1.0, max(0.2, (rms - 0.01) / 0.10))
                             self.play_reaction(intensity)
                             self.cooldown = self.cool_down_frames
 

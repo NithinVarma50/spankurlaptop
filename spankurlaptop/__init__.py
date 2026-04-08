@@ -264,17 +264,24 @@ class SpankDetector:
                             self.stop_flag = True  # Auto stop when done
 
                     elif self.mode == "run":
-                        intensity = min(1.0, max(0.0, (rms - 0.01) / 0.3))
-
                         if self.profile is not None:
                             similarity = np.dot(spectrum, self.profile)
 
                             # Lowered threshold from 0.92 to 0.82 for more reliability on laptop mics
-                            # Lowered volume gate from 0.60 to 0.40
+                            # Lowered volume gate from 0.40 to 0.40
                             if (similarity > 0.82 and rms > (self.calibrated_rms * 0.40)) or (rms > self.calibrated_rms * 1.5):
-                                self.play_reaction(intensity)
+                                # Calculate intensity based on how hard this hit is compared to the calibration
+                                # A typical hit ratio is 1.0. A hard hit is > 1.5. A light hit is 0.4.
+                                ratio = rms / (self.calibrated_rms + 1e-10)
+                                
+                                # Map ratio to volume (e.g. ratio 0.5 -> ~0.3 vol, ratio 2.0 -> 1.0 vol)
+                                volume = min(1.0, max(0.1, ratio / 2.0))
+                                
+                                self.play_reaction(volume)
                                 self.cooldown = self.cool_down_frames
                         else:
+                            # Fallback uncalibrated logic
+                            intensity = min(1.0, max(0.1, (rms - 0.01) / 0.15))
                             self.play_reaction(intensity)
                             self.cooldown = self.cool_down_frames
 
@@ -283,33 +290,30 @@ class SpankDetector:
         if len(self.history) > self.history_len:
             self.history.pop(0)
 
-    def play_reaction(self, intensity):
-        """Plays a sound scaled to the spank intensity."""
+    def play_reaction(self, volume):
+        """Plays a random sound scaled to the spank volume."""
         if not self.sounds:
             print("[DEBUG] No sounds loaded — nothing to play!")
             return
 
         total_sounds = len(self.sounds)
-        bucket_size = max(1, total_sounds // 5)
-        bucket_index = int(intensity * 4.99)  # 0 to 4
+        
+        # Pick completely randomly so all 59 sounds can be heard
+        sound_idx = random.randint(0, total_sounds - 1)
 
-        # Calculate indices
-        start_idx = bucket_index * bucket_size
-        end_idx = min(total_sounds, start_idx + bucket_size)
+        sound = self.sounds[sound_idx]
+        
+        # Adjust playback volume directly proportional to spank intensity
+        sound.set_volume(volume)
+        
+        # TRIGGER PLAYBACK IMMEDIATELY
+        sound.play()
 
-        if start_idx >= end_idx:
-            sound_idx = total_sounds - 1
-        else:
-            sound_idx = random.randint(start_idx, end_idx - 1)
-
-        # TRIGGER PLAYBACK IMMEDIATELY - Shaves off a few milliseconds of delay
-        self.sounds[sound_idx].play()
-
-        # Log playback for debugging (done after playback starts)
+        # Log playback for debugging
         log_path = os.path.join(os.path.expanduser("~"), "spankurlaptop_debug.log")
         try:
             with open(log_path, "a") as f:
-                f.write(f"[{time.strftime('%H:%M:%S')}] Playing sound {sound_idx} (Intensity: {intensity:.2f})\n")
+                f.write(f"[{time.strftime('%H:%M:%S')}] Playing sound {sound_idx} of {total_sounds} (Volume: {volume:.2f})\n")
         except Exception:
             pass
 

@@ -275,11 +275,6 @@ MIT — slap freely.
 
 
 
-Here's the complete README — one copy, paste directly into your README.md:
-
----
-
-````markdown
 <div align="center">
 
 # 👋 SpankUrLaptop

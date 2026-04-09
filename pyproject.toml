@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spankurlaptop"
+version = "1.0.1"
+description = "A terminal background tool that gives your laptop senses."
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [{name = "NithinVarma50"}]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "sounddevice",
+    "numpy",
+    "pygame",
+    "psutil",
+    "keyboard",
+    "pywebview",
+    'winrt-Windows.Devices.Sensors; sys_platform == "win32"',
+]
+
+[project.urls]
+Homepage = "https://github.com/NithinVarma50/spankurlaptop"
+
+[project.scripts]
+spankurlaptop = "spankurlaptop:main"
+
+[tool.setuptools.package-data]
+spankurlaptop = ["audio.zip"]

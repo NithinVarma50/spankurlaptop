@@ -1,7 +1,14 @@
-sounddevice
-numpy
-pygame
-psutil
-winrt-Windows.Devices.Sensors; sys_platform == 'win32'
-keyboard
-pywebview
+# Audio processing
+sounddevice==0.4.6
+numpy==1.24.0
+
+# GUI and input handling
+pygame==2.3.0
+keyboard==0.13.5
+pywebview==5.0.0
+
+# System monitoring
+psutil==5.10.0
+
+# Windows-specific sensors (Windows only)
+winrt-Windows.Devices.Sensors==2.0.0; sys_platform == 'win32'

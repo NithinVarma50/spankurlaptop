@@ -25,7 +25,8 @@ setup(
         'pygame',
         'psutil',
         'winrt-Windows.Devices.Sensors; sys_platform == "win32"',
-        'keyboard'
+        'keyboard',
+        'pywebview'
     ],
     entry_points={
         'console_scripts': [

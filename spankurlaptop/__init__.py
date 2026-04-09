@@ -19,14 +19,21 @@ except ImportError:
     print("Dependencies missing! Please run: pip install -r requirements.txt")
     sys.exit(1)
 
-# Global settings used by GUI and detectors
+# Global variables
+current_detector = None
+
 global_settings = {
     "is_enabled": True,
     "global_volume": 1.0,
     "global_sensitivity": 1.0
 }
 
-# --- Locate audio.zip reliably regardless of install method ---
+default_settings = {
+    "is_enabled": True,
+    "global_volume": 1.0,
+    "global_sensitivity": 1.0
+}
+
 def _get_audio_zip_path():
     try:
         from importlib.resources import files
@@ -49,7 +56,6 @@ def _get_audio_zip_path():
         pass
 
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "audio.zip")
-
 
 PID_FILE = os.path.join(os.path.expanduser("~"), ".spankurlaptop.pid")
 PROFILE_FILE = os.path.join(os.path.expanduser("~"), ".spankurlaptop_profile.npz")
@@ -83,32 +89,26 @@ def daemonize():
                 f.write(str(pid))
             print(f"Started! PID: {pid}")
             sys.exit(0)
-
         os.setsid()
         os.umask(0)
-
         pid = os.fork()
         if pid > 0:
             sys.exit(0)
-
         sys.stdout.flush()
         sys.stderr.flush()
         with open(os.devnull, 'r') as stdin, open(os.devnull, 'a') as stdout, open(os.devnull, 'a') as stderr:
             os.dup2(stdin.fileno(), sys.stdin.fileno())
             os.dup2(stdout.fileno(), sys.stdout.fileno())
             os.dup2(stderr.fileno(), sys.stderr.fileno())
-
         run_detector()
 
 def stop():
     if not os.path.exists(PID_FILE):
         print("Not running.")
         return
-
     try:
         with open(PID_FILE, "r") as f:
             pid = int(f.read().strip())
-
         process = psutil.Process(pid)
         process.terminate()
         process.wait(timeout=3)
@@ -179,7 +179,6 @@ class BaseDetector:
             return
         if not self.sounds:
             return
-
         total_sounds = len(self.sounds)
         sound_idx = random.randint(0, total_sounds - 1)
         sound = self.sounds[sound_idx]
@@ -194,8 +193,14 @@ class AccelerometerDetector(BaseDetector):
         super().__init__()
         self.mode = mode
         self.cooldown = 0
-        from winrt.windows.devices.sensors import Accelerometer
-        self.sensor = Accelerometer.get_default()
+        self.sensor = None
+        try:
+            import importlib
+            _winrt_sensors = importlib.import_module("winrt.windows.devices.sensors")
+            Accelerometer = _winrt_sensors.Accelerometer
+            self.sensor = Accelerometer.get_default()
+        except Exception:
+            self.sensor = None
         self.last_mag = 1.0
         if mode == "run":
             self.load_sounds()
@@ -203,7 +208,6 @@ class AccelerometerDetector(BaseDetector):
     def _on_reading_changed(self, sender, args):
         if self.stop_flag or not global_settings["is_enabled"]:
             return
-
         reading = args.reading
         mag = math.sqrt(reading.acceleration_x**2 + reading.acceleration_y**2 + reading.acceleration_z**2)
         spike = abs(mag - self.last_mag)
@@ -225,12 +229,10 @@ class AccelerometerDetector(BaseDetector):
         self.stop_flag = False
         if not self.sensor:
             return
-        
         try:
             self.sensor.report_interval = self.sensor.minimum_report_interval
         except:
             pass
-
         token = self.sensor.add_reading_changed(self._on_reading_changed)
         while not self.stop_flag:
             time.sleep(0.1)
@@ -274,15 +276,12 @@ class SpankDetector(BaseDetector):
             raise sd.CallbackStop()
         if not global_settings["is_enabled"] and self.mode == "run":
             return
-
         if self.cooldown > 0:
             self.cooldown -= 1
-
         rms = np.sqrt(np.mean(indata**2))
 
         if self.cooldown <= 0 and len(self.history) == self.history_len:
             avg_baseline = np.mean(self.history)
-
             sensitivity = global_settings["global_sensitivity"]
             sens_multiplier = max(0.1, sensitivity)
 
@@ -357,25 +356,215 @@ class SpankDetector(BaseDetector):
             print("No spanks detected.")
 
 
+HTML_UI = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f5f5f7;
+            color: #1d1d1f;
+            margin: 0;
+            padding: 30px;
+            user-select: none;
+            overflow: hidden;
+        }
+        h1 { font-size: 24px; font-weight: 600; text-align: center; margin-top: 10px; margin-bottom: 2px; }
+        .subtitle { text-align: center; color: #86868b; font-size: 13px; margin-bottom: 25px; font-weight: 500;}
+        .card {
+            background: #ffffff;
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+            margin-bottom: 15px;
+        }
+        .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .row.last { margin-bottom: 0px; }
+        
+        .label-group { display: flex; flex-direction: column; }
+        .label { font-size: 15px; font-weight: 500; }
+        .sublabel { font-size: 12px; color: #86868b; margin-top: 2px;}
+
+        /* Apple style Toggle */
+        .switch { position: relative; display: inline-block; width: 50px; height: 30px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider-toggle {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #e9e9ea; transition: .4s; border-radius: 30px;
+        }
+        .slider-toggle:before {
+            position: absolute; content: ""; height: 26px; width: 26px; left: 2px; bottom: 2px;
+            background-color: white; transition: .4s; border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        input:checked + .slider-toggle { background-color: #34c759; }
+        input:checked + .slider-toggle:before { transform: translateX(20px); }
+
+        /* Sliders */
+        input[type=range] {
+            -webkit-appearance: none; width: 100%; background: transparent; margin-top: 10px;
+        }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 6px; cursor: pointer;
+            background: #e9e9ea; border-radius: 3px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 20px; width: 20px; border-radius: 50%; background: #ffffff;
+            cursor: pointer; -webkit-appearance: none; margin-top: -7px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2); border: 0.5px solid #d1d1d6;
+        }
+        
+        .btn {
+            appearance: none; background: #007aff; border: none; border-radius: 10px;
+            color: #fff; font-size: 15px; font-weight: 600; padding: 12px; width: 100%;
+            cursor: pointer; transition: background 0.2s;
+        }
+        .btn:hover { background: #006ce4; }
+        .btn.outline {
+            background: transparent; border: 1px solid #d1d1d6; color: #ff3b30; margin-top: 10px;
+        }
+        .btn.outline:hover { background: #fff0f0; }
+    </style>
+</head>
+<body>
+    <h1>SpankUrLaptop</h1>
+    <div class="subtitle" id="sensor-status">Currently using: Loading...</div>
+
+    <div class="card">
+        <div class="row last">
+            <div class="label-group">
+                <span class="label">Enabled</span>
+                <span class="sublabel">Toggle tool on or off</span>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="toggle-enable" onchange="pywebview.api.set_enabled(this.checked)">
+                <span class="slider-toggle"></span>
+            </label>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="row last" style="flex-direction: column; align-items: flex-start;">
+            <div class="label-group" style="width: 100%;">
+                <div style="display:flex; justify-content: space-between;">
+                    <span class="label">Master Volume</span>
+                    <span class="label" id="val-vol" style="color:#007aff;">100%</span>
+                </div>
+            </div>
+            <input type="range" id="slider-vol" min="0" max="2" step="0.1" value="1.0" 
+                oninput="document.getElementById('val-vol').innerText = Math.round(this.value * 100) + '%'; pywebview.api.set_volume(this.value)">
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="row last" style="flex-direction: column; align-items: flex-start;">
+            <div class="label-group" style="width: 100%;">
+                <div style="display:flex; justify-content: space-between;">
+                    <span class="label">Slap Sensitivity</span>
+                    <span class="label" id="val-sens" style="color:#007aff;">1.0</span>
+                </div>
+            </div>
+            <input type="range" id="slider-sens" min="0.1" max="3" step="0.1" value="1.0" 
+                oninput="document.getElementById('val-sens').innerText = this.value; pywebview.api.set_sensitivity(this.value)">
+        </div>
+    </div>
+
+    <button class="btn" onclick="pywebview.api.test_scream()">Test Scream 🔊</button>
+    <button class="btn outline" onclick="resetDefaults()">Reset to Defaults</button>
+
+    <script>
+        function updateUI(state) {
+            document.getElementById('sensor-status').innerText = "Currently using: " + state.sensor;
+            document.getElementById('toggle-enable').checked = state.is_enabled;
+            
+            let vol = state.global_volume;
+            document.getElementById('slider-vol').value = vol;
+            document.getElementById('val-vol').innerText = Math.round(vol * 100) + '%';
+            
+            let sens = state.global_sensitivity;
+            document.getElementById('slider-sens').value = sens;
+            document.getElementById('val-sens').innerText = sens;
+        }
+
+        function resetDefaults() {
+            pywebview.api.reset_settings().then(updateUI);
+        }
+
+        window.addEventListener('pywebviewready', function() {
+            pywebview.api.load_state().then(updateUI);
+        });
+    </script>
+</body>
+</html>
+"""
+
+is_window_hidden = True
+
+class Api:
+    def __init__(self):
+        self._window = None
+
+    def set_window(self, window):
+        self._window = window
+
+    def load_state(self):
+        global current_detector
+        sensor_name = getattr(current_detector, "mode_str", "Unknown") if current_detector else "Unknown"
+        return {
+            "sensor": sensor_name,
+            "is_enabled": global_settings["is_enabled"],
+            "global_volume": global_settings["global_volume"],
+            "global_sensitivity": global_settings["global_sensitivity"]
+        }
+
+    def set_enabled(self, state):
+        global_settings["is_enabled"] = bool(state)
+
+    def set_volume(self, value):
+        global_settings["global_volume"] = float(value)
+
+    def set_sensitivity(self, value):
+        global_settings["global_sensitivity"] = float(value)
+
+    def test_scream(self):
+        global current_detector
+        if current_detector:
+            current_detector.play_reaction(1.0)
+
+    def reset_settings(self):
+        global_settings.update(default_settings)
+        return self.load_state()
+
+    def hide_window(self):
+        if self._window:
+            global is_window_hidden
+            self._window.hide()
+            is_window_hidden = True
+
 def run_detector():
     """Main execution of the background task."""
     has_accel = False
     if sys.platform == "win32":
         try:
-            import winrt.windows.devices.sensors as sensors
-            has_accel = sensors.Accelerometer.get_default() is not None
+            import importlib
+            _winrt_sensors = importlib.import_module("winrt.windows.devices.sensors")
+            has_accel = _winrt_sensors.Accelerometer.get_default() is not None
         except Exception:
             has_accel = False
 
     global current_detector
     if has_accel:
         current_detector = AccelerometerDetector(mode="run")
-        detector_type_str = "Accelerometer"
+        current_detector.mode_str = "Accelerometer"
     else:
         current_detector = SpankDetector(mode="run")
-        detector_type_str = "Microphone"
+        current_detector.mode_str = "Microphone"
 
     def detector_loop():
+        global current_detector
         try:
             current_detector.start_listening()
         except Exception as e:
@@ -386,70 +575,58 @@ def run_detector():
     thread = threading.Thread(target=detector_loop, daemon=True)
     thread.start()
 
-    import tkinter as tk
     try:
-        import keyboard
+        import importlib
+        webview = importlib.import_module("webview")
+    except ImportError:
+        print("Error: 'pywebview' not installed correctly.")
+        return
+
+    try:
+        import keyboard  # type: ignore
     except ImportError:
         keyboard = None
 
-    root = tk.Tk()
-    root.title("SpankUrLaptop Control Panel")
-    root.geometry("320x350")
-    root.resizable(False, False)
-    root.withdraw() 
+    api = Api()
     
-    # Store settings correctly inside tkinter
-    def apply_settings():
-        global_settings["is_enabled"] = enable_var.get()
-        global_settings["global_volume"] = float(vol_scale.get())
-        global_settings["global_sensitivity"] = float(sens_scale.get())
+    # We create the window hidden initially so that it only pops on Ctrl+5
+    window = webview.create_window(
+        title='SpankUrLaptop Settings', 
+        html=HTML_UI, 
+        js_api=api,
+        width=400, 
+        height=620,
+        resizable=False,
+        hidden=True,
+        on_top=True
+    )
+    api.set_window(window)
+
+    def on_closing():
+        global is_window_hidden
+        window.hide()
+        is_window_hidden = True
+        return False # Prevent actual closing
+
+    window.events.closing += on_closing
 
     def toggle_window():
-        if root.state() == "withdrawn":
-            root.deiconify()
-            root.lift()
-            root.attributes('-topmost', True)
-            root.attributes('-topmost', False)
+        global is_window_hidden
+        if is_window_hidden:
+            window.show()
+            is_window_hidden = False
         else:
-            root.withdraw()
+            window.hide()
+            is_window_hidden = True
 
     if keyboard:
         try:
-            keyboard.add_hotkey('ctrl+5', lambda: root.after(0, toggle_window))
+            keyboard.add_hotkey('ctrl+5', toggle_window)
         except:
             pass
 
-    def on_closing():
-        root.withdraw()
-    
-    root.protocol("WM_DELETE_WINDOW", on_closing)
-    
-    # UI Layout
-    tk.Label(root, text="👋 SpankUrLaptop UI", font=("Arial", 16, "bold")).pack(pady=(15, 5))
-    tk.Label(root, text=f"Currently using: {detector_type_str}", fg="blue", font=("Arial", 10)).pack(pady=(0, 10))
-
-    enable_var = tk.BooleanVar(value=True)
-    tk.Checkbutton(root, text="Enabled (On/Off)", font=("Arial", 11), variable=enable_var, command=apply_settings).pack(pady=5)
-
-    tk.Label(root, text="Master Audio Volume", font=("Arial", 10)).pack(pady=(10, 0))
-    vol_scale = tk.Scale(root, from_=0.0, to_=2.0, resolution=0.1, orient="horizontal", command=lambda x: apply_settings(), length=200)
-    vol_scale.set(1.0)
-    vol_scale.pack()
-
-    tk.Label(root, text="Spank Sensitivity", font=("Arial", 10)).pack(pady=(10, 0))
-    sens_scale = tk.Scale(root, from_=0.1, to_=3.0, resolution=0.1, orient="horizontal", command=lambda x: apply_settings(), length=200)
-    sens_scale.set(1.0)
-    sens_scale.pack()
-
-    def test_scream():
-        if current_detector:
-            current_detector.play_reaction(1.0)
-            
-    tk.Button(root, text="Test Scream 🔊", command=test_scream, bg="#ff4c4c", fg="white", font=("Arial", 12, "bold"), padx=10, pady=5).pack(pady=20)
-
-    # Let the GUI take main thread!
     try:
-        root.mainloop()
+        webview.start(debug=False)
     except KeyboardInterrupt:
         pass
 
@@ -496,7 +673,6 @@ def main():
             time.sleep(2)
     else:
         parser.print_help()
-
 
 if __name__ == "__main__":
     main()

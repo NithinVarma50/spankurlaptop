@@ -10,7 +10,7 @@ Harder slap = louder reaction. Calibrated to *you*. Works on every laptop ever m
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 </div>
-
+<img width="1024" height="1536" alt="file_0000000077dc71f58dae53c06f8b3449" src="https://github.com/user-attachments/assets/2dfa6e95-be3a-4deb-857c-cd21f0c81e99" />
 ---
 
 ## 🤔 Why This Exists

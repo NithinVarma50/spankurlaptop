@@ -7,7 +7,9 @@ import zipfile
 import io
 import random
 import time
+import math
 import psutil
+import threading
 
 try:
     import numpy as np  # type: ignore
@@ -17,18 +19,21 @@ except ImportError:
     print("Dependencies missing! Please run: pip install -r requirements.txt")
     sys.exit(1)
 
+# Global settings used by GUI and detectors
+global_settings = {
+    "is_enabled": True,
+    "global_volume": 1.0,
+    "global_sensitivity": 1.0
+}
+
 # --- Locate audio.zip reliably regardless of install method ---
 def _get_audio_zip_path():
-    """Returns the path to audio.zip using importlib.resources (works after pip install)."""
     try:
-        # Python 3.9+
         from importlib.resources import files
         ref = files("spankurlaptop").joinpath("audio.zip")
-        # If it's a real path (not a zipimport), return it directly
         path = str(ref)
         if os.path.exists(path):
             return path
-        # Otherwise, extract to a temp file
         import tempfile
         tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
         tmp.write(ref.read_bytes())
@@ -43,25 +48,21 @@ def _get_audio_zip_path():
     except Exception:
         pass
 
-    # Final fallback: same directory as this file
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "audio.zip")
 
 
 PID_FILE = os.path.join(os.path.expanduser("~"), ".spankurlaptop.pid")
 PROFILE_FILE = os.path.join(os.path.expanduser("~"), ".spankurlaptop_profile.npz")
 SAMPLE_RATE = 44100
-BLOCK_SIZE = 256  # Reduced from 512 for even lower latency (~5.8ms)
-
+BLOCK_SIZE = 256  
 
 def daemonize():
-    """Starts the script as a background process depending on OS."""
     if os.path.exists(PID_FILE):
         print("Tool is already running. Try 'stop' first.")
         return
 
     print("Starting spankurlaptop in background...")
     if sys.platform == "win32":
-        # Launch independently without a window using -m so it works after pip install
         CREATE_NO_WINDOW = 0x08000000
         startup_log = os.path.join(os.path.expanduser("~"), "spankurlaptop_startup_error.log")
         with open(startup_log, "w") as err_file:
@@ -74,8 +75,8 @@ def daemonize():
         with open(PID_FILE, "w") as f:
             f.write(str(p.pid))
         print(f"Started! PID: {p.pid}")
+        print("Press Ctrl+5 anytime to open the setup menu.")
     else:
-        # Fork on Unix/macOS
         pid = os.fork()
         if pid > 0:
             with open(PID_FILE, "w") as f:
@@ -99,9 +100,7 @@ def daemonize():
 
         run_detector()
 
-
 def stop():
-    """Stops the background tool."""
     if not os.path.exists(PID_FILE):
         print("Not running.")
         return
@@ -122,9 +121,7 @@ def stop():
         if os.path.exists(PID_FILE):
             os.remove(PID_FILE)
 
-
 def status():
-    """Check if running."""
     if os.path.exists(PID_FILE):
         try:
             with open(PID_FILE, "r") as f:
@@ -136,94 +133,136 @@ def status():
             pass
     print("spankurlaptop is NOT running.")
 
-
 def uninstall():
-    """Uninstall the tool and clean up files."""
     print("Uninstalling spankurlaptop...")
-
     if os.path.exists(PID_FILE):
         stop()
-
     if os.path.exists(PROFILE_FILE):
         os.remove(PROFILE_FILE)
         print(f"Removed {PROFILE_FILE}")
-
     if os.path.exists(PID_FILE):
         os.remove(PID_FILE)
-
     print("Cleanup complete.")
     print("To fully uninstall, run: pip uninstall spankurlaptop")
 
 
-# --- AUDIO & DETECTION LOGIC ---
-
-class SpankDetector:
-    def __init__(self, mode="run", calib_target=100):
-        self.mode = mode
+class BaseDetector:
+    def __init__(self):
         self.sounds = []
-
-        if mode == "run":
-            self.load_sounds()
-            if os.path.exists(PROFILE_FILE):
-                data = np.load(PROFILE_FILE)
-                self.profile = data['spectrum']
-                self.calibrated_rms = float(data['rms'])
-                print(f"Loaded saved spank profile. Baseline Spank Vol: {self.calibrated_rms:.4f}")
-            else:
-                self.profile = None
-                self.calibrated_rms = 0.0
-                print("No spank_profile.npz found. Running in generic volume mode. Consider running 'calibrate' first.")
-
-        # Detection state
-        self.history = []
-        self.history_len = int(SAMPLE_RATE / BLOCK_SIZE * 2)  # 2 seconds of history
-        self.cooldown = 0
-        self.cool_down_frames = int(SAMPLE_RATE / BLOCK_SIZE * 0.5)  # 0.5 seconds cooldown
-
-        # Calibration state
-        self.calibrating = False
-        self.calib_count = 0
-        self.calib_spectra = []
-        self.calib_rmss = []
-        self.calib_target = calib_target  # Now configurable!
+        self.stop_flag = False
 
     def load_sounds(self):
-        """Loads sounds directly from memory using zipfile for 0 latency playback."""
-        # Optimized mixer initialization with a very small buffer for instant response
         try:
             mixer.init(frequency=SAMPLE_RATE, size=-16, channels=2, buffer=256)
         except Exception:
-            # Fallback if 256 is too low for the hardware
             mixer.pre_init(SAMPLE_RATE, -16, 2, 512)
             mixer.init()
 
         audio_zip = _get_audio_zip_path()
-
         if not audio_zip or not os.path.exists(audio_zip):
             print(f"Warning: audio.zip not found at '{audio_zip}'. Audio reactions won't play.")
-            print("Tip: Try reinstalling with: pip install --force-reinstall .")
             return
 
         try:
             with zipfile.ZipFile(audio_zip, 'r') as zf:
                 mp3_files = [f for f in zf.namelist() if f.lower().endswith('.mp3')]
                 mp3_files.sort()
-
-                if not mp3_files:
-                    print("Warning: No .mp3 files found inside audio.zip!")
-                    return
-
                 for file in mp3_files:
                     data = zf.read(file)
                     sound = mixer.Sound(io.BytesIO(data))
                     self.sounds.append(sound)
-
-            print(f"Loaded {len(self.sounds)} sounds ready to scream!")
         except Exception as e:
             print(f"Error loading sounds: {e}")
 
+    def play_reaction(self, base_volume):
+        if not global_settings["is_enabled"]:
+            return
+        if not self.sounds:
+            return
+
+        total_sounds = len(self.sounds)
+        sound_idx = random.randint(0, total_sounds - 1)
+        sound = self.sounds[sound_idx]
+        
+        final_vol = min(1.0, base_volume * global_settings["global_volume"])
+        sound.set_volume(final_vol)
+        sound.play()
+
+
+class AccelerometerDetector(BaseDetector):
+    def __init__(self, mode="run"):
+        super().__init__()
+        self.mode = mode
+        self.cooldown = 0
+        from winrt.windows.devices.sensors import Accelerometer
+        self.sensor = Accelerometer.get_default()
+        self.last_mag = 1.0
+        if mode == "run":
+            self.load_sounds()
+
+    def _on_reading_changed(self, sender, args):
+        if self.stop_flag or not global_settings["is_enabled"]:
+            return
+
+        reading = args.reading
+        mag = math.sqrt(reading.acceleration_x**2 + reading.acceleration_y**2 + reading.acceleration_z**2)
+        spike = abs(mag - self.last_mag)
+        self.last_mag = mag
+
+        if self.cooldown > 0:
+            self.cooldown -= 1
+            return
+            
+        sensitivity = global_settings["global_sensitivity"]
+        threshold = 0.5 / max(0.1, sensitivity)
+
+        if spike > threshold:
+            intensity = min(1.0, max(0.2, spike / 2.0))
+            self.play_reaction(intensity)
+            self.cooldown = 10 
+
+    def start_listening(self):
+        self.stop_flag = False
+        if not self.sensor:
+            return
+        
+        try:
+            self.sensor.report_interval = self.sensor.minimum_report_interval
+        except:
+            pass
+
+        token = self.sensor.add_reading_changed(self._on_reading_changed)
+        while not self.stop_flag:
+            time.sleep(0.1)
+        self.sensor.remove_reading_changed(token)
+
+
+class SpankDetector(BaseDetector):
+    def __init__(self, mode="run", calib_target=100):
+        super().__init__()
+        self.mode = mode
+        if mode == "run":
+            self.load_sounds()
+            if os.path.exists(PROFILE_FILE):
+                data = np.load(PROFILE_FILE)
+                self.profile = data['spectrum']
+                self.calibrated_rms = float(data['rms'])
+            else:
+                self.profile = None
+                self.calibrated_rms = 0.0
+
+        self.history = []
+        self.history_len = int(SAMPLE_RATE / BLOCK_SIZE * 2)
+        self.cooldown = 0
+        self.cool_down_frames = int(SAMPLE_RATE / BLOCK_SIZE * 0.5)
+
+        self.calibrating = False
+        self.calib_count = 0
+        self.calib_spectra = []
+        self.calib_rmss = []
+        self.calib_target = calib_target 
+
     def get_spectrum(self, audio_data):
-        """Returns the normalized magnitude spectrum of the audio data block."""
         spectrum = np.abs(np.fft.rfft(audio_data[:, 0]))
         norm = np.linalg.norm(spectrum)
         if norm > 0:
@@ -231,9 +270,10 @@ class SpankDetector:
         return spectrum
 
     def audio_callback(self, indata, frames, time_info, status):
-        """Called for every block of audio to detect spikes immediately."""
-        if hasattr(self, 'stop_flag') and self.stop_flag:
+        if self.stop_flag:
             raise sd.CallbackStop()
+        if not global_settings["is_enabled"] and self.mode == "run":
+            return
 
         if self.cooldown > 0:
             self.cooldown -= 1
@@ -243,10 +283,10 @@ class SpankDetector:
         if self.cooldown <= 0 and len(self.history) == self.history_len:
             avg_baseline = np.mean(self.history)
 
-            # Check for a sharp spike
-            if rms > avg_baseline * 5.0 and rms > 0.01:
+            sensitivity = global_settings["global_sensitivity"]
+            sens_multiplier = max(0.1, sensitivity)
 
-                # Crest factor (peak to rms ratio) - impulse like a slap is very sharp (> 3.5)
+            if rms > (avg_baseline * 5.0) / sens_multiplier and rms > 0.01:
                 peak = np.max(np.abs(indata))
                 crest_factor = peak / (rms + 1e-10)
 
@@ -258,67 +298,29 @@ class SpankDetector:
                         self.calib_rmss.append(rms)
                         self.calib_count += 1
                         print(f"[{self.calib_count}/{self.calib_target}] Spank registered! (Intensity: {rms:.4f})")
-                        self.cooldown = self.cool_down_frames * 2  # 1 second cooldown
+                        self.cooldown = self.cool_down_frames * 2  
 
                         if self.calib_count >= self.calib_target:
-                            self.stop_flag = True  # Auto stop when done
+                            self.stop_flag = True  
 
                     elif self.mode == "run":
                         if self.profile is not None:
                             similarity = np.dot(spectrum, self.profile)
-
-                            # Lowered threshold from 0.92 to 0.82 for more reliability on laptop mics
-                            # Lowered volume gate from 0.40 to 0.40
-                            if (similarity > 0.82 and rms > (self.calibrated_rms * 0.40)) or (rms > self.calibrated_rms * 1.5):
-                                # Calculate intensity based on how hard this hit is compared to the calibration
-                                # A typical hit ratio is 1.0. A hard hit is > 1.5. A light hit is 0.4.
+                            if (similarity > 0.82 and rms > (self.calibrated_rms * 0.40) / sens_multiplier) or (rms > self.calibrated_rms * 1.5):
                                 ratio = rms / (self.calibrated_rms + 1e-10)
-                                
-                                # Increased volume mapping: average hit (1.0) = ~80% volume, hard hit (1.25+) = 100% volume
                                 volume = min(1.0, max(0.2, ratio / 1.25))
-                                
                                 self.play_reaction(volume)
                                 self.cooldown = self.cool_down_frames
                         else:
-                            # Fallback uncalibrated logic (also increased volume)
                             intensity = min(1.0, max(0.2, (rms - 0.01) / 0.10))
                             self.play_reaction(intensity)
                             self.cooldown = self.cool_down_frames
 
-        # Continually update history
         self.history.append(rms)
         if len(self.history) > self.history_len:
             self.history.pop(0)
 
-    def play_reaction(self, volume):
-        """Plays a random sound scaled to the spank volume."""
-        if not self.sounds:
-            print("[DEBUG] No sounds loaded — nothing to play!")
-            return
-
-        total_sounds = len(self.sounds)
-        
-        # Pick completely randomly so all 59 sounds can be heard
-        sound_idx = random.randint(0, total_sounds - 1)
-
-        sound = self.sounds[sound_idx]
-        
-        # Adjust playback volume directly proportional to spank intensity
-        sound.set_volume(volume)
-        
-        # TRIGGER PLAYBACK IMMEDIATELY
-        sound.play()
-
-        # Log playback for debugging
-        log_path = os.path.join(os.path.expanduser("~"), "spankurlaptop_debug.log")
-        try:
-            with open(log_path, "a") as f:
-                f.write(f"[{time.strftime('%H:%M:%S')}] Playing sound {sound_idx} of {total_sounds} (Volume: {volume:.2f})\n")
-        except Exception:
-            pass
-
     def start_listening(self):
-        print("Listening for spanks in the background...")
         self.stop_flag = False
         with sd.InputStream(callback=self.audio_callback, channels=1, samplerate=SAMPLE_RATE, blocksize=BLOCK_SIZE):
             while not self.stop_flag:
@@ -328,13 +330,9 @@ class SpankDetector:
         print("=" * 50)
         print("CALIBRATION MODE")
         print("=" * 50)
-        print(f"I need to learn your laptop's unique spank sound profile.")
         print(f"Please loudly spank your laptop {self.calib_target} times, pausing slightly between each.")
-        print("Listening started... Spank now!")
-
         self.stop_flag = False
         self.calibrating = True
-
         self.history = [0.001] * self.history_len
 
         try:
@@ -349,49 +347,125 @@ class SpankDetector:
             avg_spectrum = np.mean(self.calib_spectra, axis=0)
             avg_spectrum = avg_spectrum / (np.linalg.norm(avg_spectrum) + 1e-10)
             avg_rms = float(np.mean(self.calib_rmss))
-
             np.savez(PROFILE_FILE, spectrum=avg_spectrum, rms=avg_rms)
-
-            # Delete old .npy if exists
             old_npy = PROFILE_FILE.replace(".npz", ".npy")
             if os.path.exists(old_npy):
                 os.remove(old_npy)
-
             print("=" * 50)
-            print(f"Calibration complete! Saved signature and volume thresholds to {PROFILE_FILE}.")
-            print(f"Average spank volume measured: {avg_rms:.4f}")
-            print("Now run: spankurlaptop start")
+            print(f"Calibration complete! Saved {PROFILE_FILE}.")
         else:
-            print("No spanks detected during calibration. Try again!")
+            print("No spanks detected.")
 
 
 def run_detector():
     """Main execution of the background task."""
+    has_accel = False
+    if sys.platform == "win32":
+        try:
+            import winrt.windows.devices.sensors as sensors
+            has_accel = sensors.Accelerometer.get_default() is not None
+        except Exception:
+            has_accel = False
+
+    global current_detector
+    if has_accel:
+        current_detector = AccelerometerDetector(mode="run")
+        detector_type_str = "Accelerometer"
+    else:
+        current_detector = SpankDetector(mode="run")
+        detector_type_str = "Microphone"
+
+    def detector_loop():
+        try:
+            current_detector.start_listening()
+        except Exception as e:
+            log_path = os.path.join(os.path.expanduser("~"), "spankurlaptop_error.log")
+            with open(log_path, "w") as f:
+                f.write(str(e))
+
+    thread = threading.Thread(target=detector_loop, daemon=True)
+    thread.start()
+
+    import tkinter as tk
     try:
-        detector = SpankDetector(mode="run")
-        detector.start_listening()
-    except Exception as e:
-        log_path = os.path.join(os.path.expanduser("~"), "spankurlaptop_error.log")
-        with open(log_path, "w") as f:
-            f.write(str(e))
+        import keyboard
+    except ImportError:
+        keyboard = None
+
+    root = tk.Tk()
+    root.title("SpankUrLaptop Control Panel")
+    root.geometry("320x350")
+    root.resizable(False, False)
+    root.withdraw() 
+    
+    # Store settings correctly inside tkinter
+    def apply_settings():
+        global_settings["is_enabled"] = enable_var.get()
+        global_settings["global_volume"] = float(vol_scale.get())
+        global_settings["global_sensitivity"] = float(sens_scale.get())
+
+    def toggle_window():
+        if root.state() == "withdrawn":
+            root.deiconify()
+            root.lift()
+            root.attributes('-topmost', True)
+            root.attributes('-topmost', False)
+        else:
+            root.withdraw()
+
+    if keyboard:
+        try:
+            keyboard.add_hotkey('ctrl+5', lambda: root.after(0, toggle_window))
+        except:
+            pass
+
+    def on_closing():
+        root.withdraw()
+    
+    root.protocol("WM_DELETE_WINDOW", on_closing)
+    
+    # UI Layout
+    tk.Label(root, text="👋 SpankUrLaptop UI", font=("Arial", 16, "bold")).pack(pady=(15, 5))
+    tk.Label(root, text=f"Currently using: {detector_type_str}", fg="blue", font=("Arial", 10)).pack(pady=(0, 10))
+
+    enable_var = tk.BooleanVar(value=True)
+    tk.Checkbutton(root, text="Enabled (On/Off)", font=("Arial", 11), variable=enable_var, command=apply_settings).pack(pady=5)
+
+    tk.Label(root, text="Master Audio Volume", font=("Arial", 10)).pack(pady=(10, 0))
+    vol_scale = tk.Scale(root, from_=0.0, to_=2.0, resolution=0.1, orient="horizontal", command=lambda x: apply_settings(), length=200)
+    vol_scale.set(1.0)
+    vol_scale.pack()
+
+    tk.Label(root, text="Spank Sensitivity", font=("Arial", 10)).pack(pady=(10, 0))
+    sens_scale = tk.Scale(root, from_=0.1, to_=3.0, resolution=0.1, orient="horizontal", command=lambda x: apply_settings(), length=200)
+    sens_scale.set(1.0)
+    sens_scale.pack()
+
+    def test_scream():
+        if current_detector:
+            current_detector.play_reaction(1.0)
+            
+    tk.Button(root, text="Test Scream 🔊", command=test_scream, bg="#ff4c4c", fg="white", font=("Arial", 12, "bold"), padx=10, pady=5).pack(pady=20)
+
+    # Let the GUI take main thread!
+    try:
+        root.mainloop()
+    except KeyboardInterrupt:
+        pass
 
 
 def main():
     parser = argparse.ArgumentParser(description="SpankUrLaptop CLI Tool")
     subparsers = parser.add_subparsers(dest="command")
-
     subparsers.add_parser("start", help="Start spankurlaptop in the background")
     subparsers.add_parser("stop", help="Stop the background process")
     subparsers.add_parser("status", help="Check if spankurlaptop is running")
-    subparsers.add_parser("run", help="Run in foreground (used internally)")
+    subparsers.add_parser("run", help="Run in foreground")
     subparsers.add_parser("uninstall", help="Uninstall and clean up files")
-    subparsers.add_parser("test-audio", help="Instantly play a random moan to test volume")
+    subparsers.add_parser("test-audio", help="Play a random moan to test volume")
 
     calib_parser = subparsers.add_parser("calibrate", help="Calibrate spank detection")
-    calib_parser.add_argument(
-        "--count", type=int, default=100,
-        help="Number of spanks to calibrate with (default: 100). Example: --count 20"
-    )
+    calib_parser.add_argument("--count", type=int, default=100)
 
     args = parser.parse_args()
 
@@ -412,13 +486,14 @@ def main():
         uninstall()
     elif args.command == "test-audio":
         print("Testing audio output...")
-        detector = SpankDetector(mode="run")
+        detector = BaseDetector()
+        detector.load_sounds()
         if not detector.sounds:
             print("Error: No sounds loaded.")
         else:
             print(f"Playing random sound from {len(detector.sounds)} available.")
             detector.play_reaction(random.random())
-            time.sleep(2) # Give it time to play
+            time.sleep(2)
     else:
         parser.print_help()
 

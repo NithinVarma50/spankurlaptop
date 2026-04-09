@@ -2,3 +2,5 @@ sounddevice
 numpy
 pygame
 psutil
+winrt-Windows.Devices.Sensors; sys_platform == 'win32'
+keyboard

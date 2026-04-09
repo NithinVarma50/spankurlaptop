@@ -23,7 +23,9 @@ setup(
         'sounddevice',
         'numpy',
         'pygame',
-        'psutil'
+        'psutil',
+        'winrt-Windows.Devices.Sensors; sys_platform == "win32"',
+        'keyboard'
     ],
     entry_points={
         'console_scripts': [

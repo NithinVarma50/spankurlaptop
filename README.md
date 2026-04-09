@@ -15,14 +15,29 @@ Slap it. It screams back. Harder slap = louder scream.
 
 ## 🧠 How It Works
 
-SpankUrLaptop runs silently in the background and listens through your laptop's microphone.
+SpankUrLaptop runs silently in the background and listens through your laptop's **built-in accelerometer** or **microphone**.
 
 When you slap your laptop chassis, it:
 
-1. **Detects the impact instantly** — using a real-time audio spike detector with an `11ms` audio block size, faster than human reaction time.
-2. **Analyzes the wave** — computes an FFT (Fast Fourier Transform) frequency fingerprint and matches it against your calibrated slap profile.
-3. **Filters out false positives** — voice, keyboard typing, and phone notifications are rejected using a Crest Factor + Cosine Similarity test.
+1. **Detects the impact instantly** — automatically uses your accelerometer (if available) for precision spike detection, or falls back to a real-time audio spike detector via microphone.
+2. **Analyzes the wave** — computes the mechanical force (via accelerometer) or frequency fingerprint (via microphone) to confirm a spank.
+3. **Filters out false positives** — completely ignores voice, keyboard typing, and ambient noise.
 4. **Screams back in proportion** — maps the slap intensity (0–100%) to one of 59 progressively louder audio reactions, chosen randomly from the correct intensity bucket.
+
+---
+
+## 🎛️ Control Panel
+
+SpankUrLaptop now comes with a hidden Control Panel!
+
+Once the tool is started, you can press **`Ctrl + 5`** globally on your keyboard to reveal the UI.
+From the Control Panel you can:
+- Toggle the tool **On/Off**.
+- Adjust **Master Volume**.
+- Adjust **Slap Sensitivity**.
+- Use the **Test Scream** button.
+- See whether it's using the **Accelerometer** or **Microphone**.
+When you are done, simply hit the **X** button to close the UI, and the tool will become invisible again while continuing to run in the background.
 
 ---
 

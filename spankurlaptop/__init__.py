@@ -430,14 +430,13 @@ HTML_UI = """
     </style>
 </head>
 <body>
-    <h1>SpankUrLaptop</h1>
+    <h1>SpankUrLaptop 👋</h1>
     <div class="subtitle" id="sensor-status">Currently using: Loading...</div>
 
     <div class="card">
         <div class="row last">
             <div class="label-group">
                 <span class="label" id="text-enable">Enabled</span>
-                <span class="sublabel">Toggle tool on or off</span>
             </div>
             <label class="switch">
                 <input type="checkbox" id="toggle-enable" onchange="updateToggleText(this.checked); pywebview.api.set_enabled(this.checked)">

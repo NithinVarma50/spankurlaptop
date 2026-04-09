@@ -436,11 +436,11 @@ HTML_UI = """
     <div class="card">
         <div class="row last">
             <div class="label-group">
-                <span class="label">Enabled</span>
+                <span class="label" id="text-enable">Enabled</span>
                 <span class="sublabel">Toggle tool on or off</span>
             </div>
             <label class="switch">
-                <input type="checkbox" id="toggle-enable" onchange="pywebview.api.set_enabled(this.checked)">
+                <input type="checkbox" id="toggle-enable" onchange="updateToggleText(this.checked); pywebview.api.set_enabled(this.checked)">
                 <span class="slider-toggle"></span>
             </label>
         </div>
@@ -476,9 +476,15 @@ HTML_UI = """
     <button class="btn outline" onclick="resetDefaults()">Reset to Defaults</button>
 
     <script>
+        function updateToggleText(enabled) {
+            document.getElementById('text-enable').innerText = enabled ? "Enabled" : "Disabled";
+            document.getElementById('text-enable').style.color = enabled ? "#1d1d1f" : "#86868b";
+        }
+
         function updateUI(state) {
             document.getElementById('sensor-status').innerText = "Currently using: " + state.sensor;
             document.getElementById('toggle-enable').checked = state.is_enabled;
+            updateToggleText(state.is_enabled);
             
             let vol = state.global_volume;
             document.getElementById('slider-vol').value = vol;
